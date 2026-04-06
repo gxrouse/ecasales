@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECA Sales — EOD Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;color:#1a1a1a;background:#f5f5f3;min-height:100vh}
+.app{max-width:980px;margin:0 auto;padding:1.5rem 1rem}
+header{margin-bottom:1.5rem}
+header h1{font-size:20px;font-weight:600;letter-spacing:-0.3px}
+header p{font-size:13px;color:#666;margin-top:3px}
+.nav{display:flex;gap:8px;margin-bottom:1.5rem;flex-wrap:wrap}
+.nav button{padding:8px 16px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#555;cursor:pointer;font-size:13px;font-family:inherit;transition:all 0.15s}
+.nav button.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a;font-weight:500}
+.nav button:hover:not(.active){background:#f0f0ee;border-color:#ccc}
+.page{display:none}.page.active{display:block}
+.card{background:#fff;border:1px solid #e8e8e5;border-radius:12px;padding:1.5rem;margin-bottom:1rem}
+.form-title{font-size:17px;font-weight:600;margin-bottom:1.25rem;letter-spacing:-0.2px}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:12px;font-weight:500;color:#666;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px}
+.field input,.field select{width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;font-size:14px;font-family:inherit;transition:border-color 0.15s}
+.field input:focus,.field select:focus{outline:none;border-color:#999}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:500px){.grid2{grid-template-columns:1fr}}
+.btn-submit{width:100%;padding:11px;background:#1a1a1a;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;color:#fff;font-family:inherit;margin-top:0.5rem;transition:opacity 0.15s}
+.btn-submit:hover{opacity:0.85}
+.btn-submit:active{transform:scale(0.99)}
+.btn-submit:disabled{opacity:0.4;cursor:not-allowed}
+.toast{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:1rem;display:none}
+.toast.success{background:#f0faf4;color:#1a7a3f;border:1px solid #a8dfc0;display:block}
+.toast.error{background:#fff0f0;color:#c0392b;border:1px solid #f5c0bc;display:block}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1rem}
+.metric{background:#f5f5f3;border-radius:8px;padding:1rem;text-align:center}
+.metric .val{font-size:22px;font-weight:600;display:block;letter-spacing:-0.5px}
+.metric .lbl{font-size:11px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:0.4px}
+.metric .pct{font-size:22px;font-weight:600;display:block;color:#1a5fa8;letter-spacing:-0.5px}
+.metric .rev-val{font-size:22px;font-weight:600;display:block;color:#1a7a3f;letter-spacing:-0.5px}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem;align-items:flex-end}
+.filters .field{margin-bottom:0;flex:1;min-width:130px}
+.range-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:0}
+.range-btns button{padding:6px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-family:inherit;color:#555;transition:all 0.15s}
+.range-btns button:hover{background:#f0f0ee}
+.range-btns button.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a;font-weight:500}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 10px;border-bottom:1px solid #eee;font-weight:500;color:#888;white-space:nowrap;font-size:12px;text-transform:uppercase;letter-spacing:0.3px}
+td{padding:9px 10px;border-bottom:1px solid #f0f0ee;color:#1a1a1a;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf8}
+.empty{text-align:center;padding:2.5rem;color:#aaa;font-size:14px}
+.section-title{font-size:12px;font-weight:500;margin-bottom:0.75rem;margin-top:1.25rem;color:#888;text-transform:uppercase;letter-spacing:0.4px}
+.divider{border:none;border-top:1px solid #f0f0ee;margin:1.25rem 0}
+.rev{font-weight:500;color:#1a7a3f}
+.loading{text-align:center;padding:3rem;color:#aaa;font-size:14px}
+.top-rev{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:1.25rem}
+.clear-btn{padding:9px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#555}
+.clear-btn:hover{background:#f0f0ee}
+.admin-lock{max-width:360px;margin:3rem auto}
+.admin-lock .form-title{text-align:center;margin-bottom:0.5rem}
+.admin-lock p{text-align:center;font-size:13px;color:#888;margin-bottom:1.25rem}
+.btn-danger{padding:7px 14px;background:#fff0f0;border:1px solid #f5c0bc;border-radius:8px;color:#c0392b;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn-danger:hover{background:#ffe0e0}
+.btn-save{padding:7px 14px;background:#f0faf4;border:1px solid #a8dfc0;border-radius:8px;color:#1a7a3f;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn-save:hover{background:#dcf5e7}
+.admin-tabs{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
+.admin-tabs button{padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#555;cursor:pointer;font-size:13px;font-family:inherit}
+.admin-tabs button.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a;font-weight:500}
+.edit-input{width:72px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit;background:#fff;color:#1a1a1a}
+.edit-input:focus{outline:none;border-color:#999}
+.edit-input.wide{width:100px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>ECA Sales — EOD Tracker</h1>
+    <p>Submit your end of day report or view team performance.</p>
+  </header>
+
+  <div class="nav">
+    <button class="active" onclick="showPage('dm-form',this)">DM setter form</button>
+    <button onclick="showPage('setter-form',this)">Setter form</button>
+    <button onclick="showPage('closer-form',this)">Closer form</button>
+    <button onclick="showPage('dashboard',this)">Manager dashboard</button>
+    <button onclick="showPage('admin',this)">Admin</button>
+  </div>
+
+  <!-- DM Setter Form -->
+  <div class="page active" id="page-dm-form">
+    <div class="card">
+      <div class="form-title">DM setter — end of day report</div>
+      <div id="toast-dm" class="toast"></div>
+      <div class="grid2">
+        <div class="field"><label>Rep name</label>
+          <select id="dm-name">
+            <option value="">Select rep</option>
+            <option>Alyssa Fisher</option>
+            <option>Dorothy McClure</option>
+            <option>Miles Perez</option>
+          </select>
+        </div>
+        <div class="field"><label>Date</label><input type="date" id="dm-date"></div>
+      </div>
+      <hr class="divider">
+      <div class="grid2">
+        <div class="field"><label>Total DMs sent</label><input type="number" id="dm-dms" min="0" placeholder="0"></div>
+        <div class="field"><label>Total conversations</label><input type="number" id="dm-convos" min="0" placeholder="0"></div>
+        <div class="field"><label>Calls pitched</label><input type="number" id="dm-pitched" min="0" placeholder="0"></div>
+        <div class="field"><label>Calls booked</label><input type="number" id="dm-booked" min="0" placeholder="0"></div>
+      </div>
+      <button class="btn-submit" id="btn-dm" onclick="submitDM()">Submit EOD report</button>
+    </div>
+  </div>
+
+  <!-- Setter Form -->
+  <div class="page" id="page-setter-form">
+    <div class="card">
+      <div class="form-title">Setter — end of day report</div>
+      <div id="toast-setter" class="toast"></div>
+      <div class="grid2">
+        <div class="field"><label>Rep name</label>
+          <select id="setter-name">
+            <option value="">Select rep</option>
+            <option>Miles Perez</option>
+          </select>
+        </div>
+        <div class="field"><label>Date</label><input type="date" id="setter-date"></div>
+      </div>
+      <hr class="divider">
+      <div class="grid2">
+        <div class="field"><label>Total outbound dials</label><input type="number" id="setter-dials" min="0" placeholder="0"></div>
+        <div class="field"><label>Total conversations</label><input type="number" id="setter-convos" min="0" placeholder="0"></div>
+        <div class="field"><label>Calls pitched</label><input type="number" id="setter-pitched" min="0" placeholder="0"></div>
+        <div class="field"><label>Calls booked</label><input type="number" id="setter-booked" min="0" placeholder="0"></div>
+      </div>
+      <button class="btn-submit" id="btn-setter" onclick="submitSetter()">Submit EOD report</button>
+    </div>
+  </div>
+
+  <!-- Closer Form -->
+  <div class="page" id="page-closer-form">
+    <div class="card">
+      <div class="form-title">Closer — end of day report</div>
+      <div id="toast-closer" class="toast"></div>
+      <div class="grid2">
+        <div class="field"><label>Rep name</label>
+          <select id="closer-name">
+            <option value="">Select rep</option>
+            <option>Bryce Miller</option>
+            <option>Broderick Sargent</option>
+          </select>
+        </div>
+        <div class="field"><label>Date</label><input type="date" id="closer-date"></div>
+      </div>
+      <hr class="divider">
+      <div class="grid2">
+        <div class="field"><label>Calls scheduled</label><input type="number" id="closer-sched" min="0" placeholder="0"></div>
+        <div class="field"><label>Live calls</label><input type="number" id="closer-live" min="0" placeholder="0"></div>
+        <div class="field"><label>Offers made</label><input type="number" id="closer-offers" min="0" placeholder="0"></div>
+        <div class="field"><label>Closed deals</label><input type="number" id="closer-closed" min="0" placeholder="0"></div>
+        <div class="field"><label>Revenue signed (USD)</label><input type="number" id="closer-rev" min="0" placeholder="0"></div>
+        <div class="field"><label>Cash collected (USD)</label><input type="number" id="closer-cash" min="0" placeholder="0"></div>
+      </div>
+      <button class="btn-submit" id="btn-closer" onclick="submitCloser()">Submit EOD report</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="page" id="page-dashboard">
+    <div class="card">
+      <div class="filters">
+        <div class="field"><label>Role</label>
+          <select id="f-role" onchange="renderDash()">
+            <option value="">All roles</option>
+            <option value="dm">DM setter</option>
+            <option value="setter">Setter</option>
+            <option value="closer">Closer</option>
+          </select>
+        </div>
+        <div class="field"><label>Rep</label>
+          <select id="f-rep" onchange="renderDash()">
+            <option value="">All reps</option>
+            <option>Alyssa Fisher</option>
+            <option>Dorothy McClure</option>
+            <option>Miles Perez</option>
+            <option>Bryce Miller</option>
+            <option>Broderick Sargent</option>
+          </select>
+        </div>
+        <div class="field"><label>From</label><input type="date" id="f-from" onchange="onManualDate()"></div>
+        <div class="field"><label>To</label><input type="date" id="f-to" onchange="onManualDate()"></div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <button class="clear-btn" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+      <div class="range-btns">
+        <button id="rb-today" onclick="setRange('today',this)">Today</button>
+        <button id="rb-7" onclick="setRange('7',this)">Trailing 7 days</button>
+        <button id="rb-30" onclick="setRange('30',this)">Trailing 30 days</button>
+        <button id="rb-90" onclick="setRange('90',this)">Trailing 90 days</button>
+        <button id="rb-365" onclick="setRange('365',this)">Trailing 12 months</button>
+        <button id="rb-all" onclick="setRange('all',this)">All time</button>
+      </div>
+    </div>
+    <div id="dash-content"><div class="loading">Loading data...</div></div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div class="page" id="page-admin">
+    <div id="admin-lock-screen">
+      <div class="card admin-lock">
+        <div class="form-title">Admin access</div>
+        <p>Enter the admin password to manage submissions.</p>
+        <div id="toast-admin-lock" class="toast"></div>
+        <div class="field"><label>Password</label><input type="password" id="admin-pw-input" onkeydown="if(event.key==='Enter')checkAdminPw()"></div>
+        <button class="btn-submit" onclick="checkAdminPw()">Unlock</button>
+      </div>
+    </div>
+    <div id="admin-panel" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <span style="font-size:17px;font-weight:600">Submission manager</span>
+          <button class="clear-btn" onclick="lockAdmin()">Lock</button>
+        </div>
+        <div id="toast-admin" class="toast"></div>
+        <div class="admin-tabs">
+          <button class="active" id="atab-dm" onclick="switchAdminTab('dm',this)">DM setter</button>
+          <button id="atab-setter" onclick="switchAdminTab('setter',this)">Setter</button>
+          <button id="atab-closer" onclick="switchAdminTab('closer',this)">Closer</button>
+        </div>
+        <div id="admin-table-wrap"><div class="loading">Loading...</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SUPA_URL='https://sifinrypprjfuyvtxowt.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpZmlucnlwcHJqZnV5dnR4b3d0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MDM3MDcsImV4cCI6MjA5MTA3OTcwN30.XG03GAdtpuuQiO3pSjbl8WoPGOk_FZBCw9DPwBVNi34';
+const H={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
+let adminUnlocked=false;
+let currentAdminTab='dm';
+
+async function dbInsert(table,row){
+  const r=await fetch(`${SUPA_URL}/rest/v1/${table}`,{method:'POST',headers:{...H,'Prefer':'return=minimal'},body:JSON.stringify(row)});
+  if(!r.ok) throw new Error(await r.text());
+}
+
+async function dbSelect(table,from,to,rep){
+  let url=`${SUPA_URL}/rest/v1/${table}?select=*&order=date.desc`;
+  if(from) url+=`&date=gte.${from}`;
+  if(to) url+=`&date=lte.${to}`;
+  if(rep) url+=`&name=eq.${encodeURIComponent(rep)}`;
+  const r=await fetch(url,{headers:H});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function pad(n){return String(n).padStart(2,'0')}
+function fmt(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
+function today(){return fmt(new Date())}
+function daysAgo(n){const d=new Date();d.setDate(d.getDate()-n);return fmt(d)}
+
+document.getElementById('dm-date').value=today();
+document.getElementById('setter-date').value=today();
+document.getElementById('closer-date').value=today();
+
+function showPage(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id==='dashboard') renderDash();
+  if(id==='admin' && adminUnlocked) {
+    document.getElementById('admin-lock-screen').style.display='none';
+    document.getElementById('admin-panel').style.display='block';
+    loadAdminTab(currentAdminTab);
+  }
+}
+
+function toast(id,msg,type='success'){
+  const el=document.getElementById('toast-'+id);
+  el.textContent=msg;el.className='toast '+type;
+  setTimeout(()=>{el.className='toast'},3500);
+}
+
+function getNum(id){return parseInt(document.getElementById(id).value)||0}
+function getVal(id){return document.getElementById(id).value.trim()}
+
+async function submitDM(){
+  const name=getVal('dm-name'),date=getVal('dm-date');
+  if(!name||!date){toast('dm','Please select a rep and date.','error');return}
+  const btn=document.getElementById('btn-dm');
+  btn.disabled=true;btn.textContent='Submitting...';
+  try{
+    await dbInsert('dm_setter',{name,date,dms:getNum('dm-dms'),convos:getNum('dm-convos'),pitched:getNum('dm-pitched'),booked:getNum('dm-booked')});
+    ['dm-dms','dm-convos','dm-pitched','dm-booked'].forEach(id=>document.getElementById(id).value='');
+    toast('dm','Report submitted successfully.');
+  }catch(e){toast('dm','Submission failed: '+e.message,'error')}
+  btn.disabled=false;btn.textContent='Submit EOD report';
+}
+
+async function submitSetter(){
+  const name=getVal('setter-name'),date=getVal('setter-date');
+  if(!name||!date){toast('setter','Please select a rep and date.','error');return}
+  const btn=document.getElementById('btn-setter');
+  btn.disabled=true;btn.textContent='Submitting...';
+  try{
+    await dbInsert('setter',{name,date,dials:getNum('setter-dials'),convos:getNum('setter-convos'),pitched:getNum('setter-pitched'),booked:getNum('setter-booked')});
+    ['setter-dials','setter-convos','setter-pitched','setter-booked'].forEach(id=>document.getElementById(id).value='');
+    toast('setter','Report submitted successfully.');
+  }catch(e){toast('setter','Submission failed: '+e.message,'error')}
+  btn.disabled=false;btn.textContent='Submit EOD report';
+}
+
+async function submitCloser(){
+  const name=getVal('closer-name'),date=getVal('closer-date');
+  if(!name||!date){toast('closer','Please select a rep and date.','error');return}
+  const btn=document.getElementById('btn-closer');
+  btn.disabled=true;btn.textContent='Submitting...';
+  try{
+    await dbInsert('closer',{name,date,sched:getNum('closer-sched'),live:getNum('closer-live'),offers:getNum('closer-offers'),closed:getNum('closer-closed'),rev:getNum('closer-rev'),cash:getNum('closer-cash')});
+    ['closer-sched','closer-live','closer-offers','closer-closed','closer-rev','closer-cash'].forEach(id=>document.getElementById(id).value='');
+    toast('closer','Report submitted successfully.');
+  }catch(e){toast('closer','Submission failed: '+e.message,'error')}
+  btn.disabled=false;btn.textContent='Submit EOD report';
+}
+
+function setRange(r,btn){
+  document.querySelectorAll('.range-btns button').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const now=new Date();
+  let from='',to=fmt(now);
+  if(r==='today'){from=today();to=today();}
+  else if(r==='7'){from=daysAgo(7);}
+  else if(r==='30'){from=daysAgo(30);}
+  else if(r==='90'){from=daysAgo(90);}
+  else if(r==='365'){from=daysAgo(365);}
+  else{from='';to='';}
+  document.getElementById('f-from').value=from;
+  document.getElementById('f-to').value=to;
+  renderDash();
+}
+
+function onManualDate(){
+  document.querySelectorAll('.range-btns button').forEach(b=>b.classList.remove('active'));
+  renderDash();
+}
+
+function clearFilters(){
+  document.getElementById('f-role').value='';
+  document.getElementById('f-rep').value='';
+  document.getElementById('f-from').value='';
+  document.getElementById('f-to').value='';
+  document.querySelectorAll('.range-btns button').forEach(b=>b.classList.remove('active'));
+  renderDash();
+}
+
+function pct(n,d){return d===0?'—':(n/d*100).toFixed(1)+'%'}
+function money(n){return '$'+Number(n).toLocaleString()}
+
+async function renderDash(){
+  const role=getVal('f-role'),rep=getVal('f-rep'),from=getVal('f-from'),to=getVal('f-to');
+  const el=document.getElementById('dash-content');
+  el.innerHTML='<div class="loading">Loading data...</div>';
+  try{
+    const showDM=!role||role==='dm';
+    const showSetter=!role||role==='setter';
+    const showCloser=!role||role==='closer';
+    const [dmRows,setterRows,closerRows]=await Promise.all([
+      showDM?dbSelect('dm_setter',from,to,rep):[],
+      showSetter?dbSelect('setter',from,to,rep):[],
+      showCloser?dbSelect('closer',from,to,rep):[]
+    ]);
+    let html='';
+    const totRev=closerRows.reduce((s,r)=>s+r.rev,0);
+    const totCash=closerRows.reduce((s,r)=>s+r.cash,0);
+    const totClosed=closerRows.reduce((s,r)=>s+r.closed,0);
+    html+=`<div class="top-rev">
+      <div class="metric"><span class="rev-val">${money(totRev)}</span><div class="lbl">Revenue signed</div></div>
+      <div class="metric"><span class="rev-val">${money(totCash)}</span><div class="lbl">Cash collected</div></div>
+      <div class="metric"><span class="val">${totClosed}</span><div class="lbl">Closed deals</div></div>
+    </div>`;
+
+    if(showDM){
+      const totDMs=dmRows.reduce((s,r)=>s+r.dms,0);
+      const totConvos=dmRows.reduce((s,r)=>s+r.convos,0);
+      const totPitched=dmRows.reduce((s,r)=>s+r.pitched,0);
+      const totBooked=dmRows.reduce((s,r)=>s+r.booked,0);
+      html+=`<div class="card"><div class="form-title">DM setter performance</div>
+        <div class="metric-grid">
+          <div class="metric"><span class="val">${totDMs}</span><div class="lbl">DMs sent</div></div>
+          <div class="metric"><span class="val">${totConvos}</span><div class="lbl">Conversations</div></div>
+          <div class="metric"><span class="val">${totPitched}</span><div class="lbl">Calls pitched</div></div>
+          <div class="metric"><span class="val">${totBooked}</span><div class="lbl">Calls booked</div></div>
+          <div class="metric"><span class="pct">${pct(totConvos,totDMs)}</span><div class="lbl">Convo rate</div></div>
+          <div class="metric"><span class="pct">${pct(totPitched,totConvos)}</span><div class="lbl">Pitch rate</div></div>
+          <div class="metric"><span class="pct">${pct(totBooked,totPitched)}</span><div class="lbl">Book rate</div></div>
+        </div>`;
+      if(dmRows.length){
+        html+=`<div class="section-title">Submissions</div><div style="overflow-x:auto"><table>
+          <tr><th>Date</th><th>Rep</th><th>DMs</th><th>Convos</th><th>Pitched</th><th>Booked</th><th>Convo%</th><th>Pitch%</th><th>Book%</th></tr>`;
+        dmRows.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.dms}</td><td>${r.convos}</td><td>${r.pitched}</td><td>${r.booked}</td><td>${pct(r.convos,r.dms)}</td><td>${pct(r.pitched,r.convos)}</td><td>${pct(r.booked,r.pitched)}</td></tr>`});
+        html+=`</table></div>`;
+      }else{html+=`<div class="empty">No DM setter submissions for this period.</div>`}
+      html+=`</div>`;
+    }
+
+    if(showSetter){
+      const totDials=setterRows.reduce((s,r)=>s+r.dials,0);
+      const totConvos=setterRows.reduce((s,r)=>s+r.convos,0);
+      const totPitched=setterRows.reduce((s,r)=>s+r.pitched,0);
+      const totBooked=setterRows.reduce((s,r)=>s+r.booked,0);
+      html+=`<div class="card"><div class="form-title">Setter performance</div>
+        <div class="metric-grid">
+          <div class="metric"><span class="val">${totDials}</span><div class="lbl">Dials</div></div>
+          <div class="metric"><span class="val">${totConvos}</span><div class="lbl">Conversations</div></div>
+          <div class="metric"><span class="val">${totPitched}</span><div class="lbl">Calls pitched</div></div>
+          <div class="metric"><span class="val">${totBooked}</span><div class="lbl">Calls booked</div></div>
+          <div class="metric"><span class="pct">${pct(totConvos,totDials)}</span><div class="lbl">Convo rate</div></div>
+          <div class="metric"><span class="pct">${pct(totPitched,totConvos)}</span><div class="lbl">Pitch rate</div></div>
+          <div class="metric"><span class="pct">${pct(totBooked,totPitched)}</span><div class="lbl">Book rate</div></div>
+        </div>`;
+      if(setterRows.length){
+        html+=`<div class="section-title">Submissions</div><div style="overflow-x:auto"><table>
+          <tr><th>Date</th><th>Rep</th><th>Dials</th><th>Convos</th><th>Pitched</th><th>Booked</th><th>Convo%</th><th>Pitch%</th><th>Book%</th></tr>`;
+        setterRows.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.dials}</td><td>${r.convos}</td><td>${r.pitched}</td><td>${r.booked}</td><td>${pct(r.convos,r.dials)}</td><td>${pct(r.pitched,r.convos)}</td><td>${pct(r.booked,r.pitched)}</td></tr>`});
+        html+=`</table></div>`;
+      }else{html+=`<div class="empty">No setter submissions for this period.</div>`}
+      html+=`</div>`;
+    }
+
+    if(showCloser){
+      const totSched=closerRows.reduce((s,r)=>s+r.sched,0);
+      const totLive=closerRows.reduce((s,r)=>s+r.live,0);
+      const totOffers=closerRows.reduce((s,r)=>s+r.offers,0);
+      html+=`<div class="card"><div class="form-title">Closer performance</div>
+        <div class="metric-grid">
+          <div class="metric"><span class="val">${totSched}</span><div class="lbl">Calls scheduled</div></div>
+          <div class="metric"><span class="val">${totLive}</span><div class="lbl">Live calls</div></div>
+          <div class="metric"><span class="val">${totOffers}</span><div class="lbl">Offers made</div></div>
+          <div class="metric"><span class="val">${totClosed}</span><div class="lbl">Closed deals</div></div>
+          <div class="metric"><span class="pct">${pct(totLive,totSched)}</span><div class="lbl">Show rate</div></div>
+          <div class="metric"><span class="pct">${pct(totOffers,totLive)}</span><div class="lbl">Qualified rate</div></div>
+          <div class="metric"><span class="pct">${pct(totClosed,totLive)}</span><div class="lbl">Close rate</div></div>
+        </div>`;
+      if(closerRows.length){
+        html+=`<div class="section-title">Submissions</div><div style="overflow-x:auto"><table>
+          <tr><th>Date</th><th>Rep</th><th>Sched</th><th>Live</th><th>Offers</th><th>Closed</th><th>Revenue</th><th>Cash</th><th>Show%</th><th>Qual%</th><th>Close%</th></tr>`;
+        closerRows.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.sched}</td><td>${r.live}</td><td>${r.offers}</td><td>${r.closed}</td><td class="rev">${money(r.rev)}</td><td class="rev">${money(r.cash)}</td><td>${pct(r.live,r.sched)}</td><td>${pct(r.offers,r.live)}</td><td>${pct(r.closed,r.live)}</td></tr>`});
+        html+=`</table></div>`;
+      }else{html+=`<div class="empty">No closer submissions for this period.</div>`}
+      html+=`</div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div class="card"><div class="empty">Error loading data: ${e.message}</div></div>`;
+  }
+}
+
+// Admin
+const ADMIN_PW='ECA2024!';
+
+function checkAdminPw(){
+  const pw=document.getElementById('admin-pw-input').value;
+  if(pw===ADMIN_PW){
+    adminUnlocked=true;
+    document.getElementById('admin-lock-screen').style.display='none';
+    document.getElementById('admin-panel').style.display='block';
+    loadAdminTab('dm');
+  } else {
+    const t=document.getElementById('toast-admin-lock');
+    t.textContent='Incorrect password.';t.className='toast error';
+    setTimeout(()=>{t.className='toast'},3000);
+  }
+}
+
+function lockAdmin(){
+  adminUnlocked=false;
+  document.getElementById('admin-lock-screen').style.display='block';
+  document.getElementById('admin-panel').style.display='none';
+  document.getElementById('admin-pw-input').value='';
+}
+
+function switchAdminTab(tab,btn){
+  currentAdminTab=tab;
+  document.querySelectorAll('.admin-tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadAdminTab(tab);
+}
+
+async function loadAdminTab(tab){
+  const wrap=document.getElementById('admin-table-wrap');
+  wrap.innerHTML='<div class="loading">Loading...</div>';
+  try{
+    const table=tab==='dm'?'dm_setter':tab;
+    const rows=await dbSelect(table,'','','');
+    if(!rows.length){wrap.innerHTML='<div class="empty">No submissions found.</div>';return;}
+    let html='<div style="overflow-x:auto"><table>';
+    if(tab==='dm'){
+      html+=`<tr><th>Date</th><th>Rep</th><th>DMs</th><th>Convos</th><th>Pitched</th><th>Booked</th><th>Actions</th></tr>`;
+      rows.forEach(r=>{
+        html+=`<tr id="row-${r.id}">
+          <td><input class="edit-input wide" value="${r.date}" id="e-date-${r.id}"></td>
+          <td>${r.name}</td>
+          <td><input class="edit-input" type="number" value="${r.dms}" id="e-dms-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.convos}" id="e-convos-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.pitched}" id="e-pitched-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.booked}" id="e-booked-${r.id}"></td>
+          <td style="display:flex;gap:6px;padding:6px 10px">
+            <button class="btn-save" onclick="saveRow('dm_setter','${r.id}','dm')">Save</button>
+            <button class="btn-danger" onclick="deleteRow('dm_setter','${r.id}','${r.name}',this)">Delete</button>
+          </td></tr>`;
+      });
+    } else if(tab==='setter'){
+      html+=`<tr><th>Date</th><th>Rep</th><th>Dials</th><th>Convos</th><th>Pitched</th><th>Booked</th><th>Actions</th></tr>`;
+      rows.forEach(r=>{
+        html+=`<tr id="row-${r.id}">
+          <td><input class="edit-input wide" value="${r.date}" id="e-date-${r.id}"></td>
+          <td>${r.name}</td>
+          <td><input class="edit-input" type="number" value="${r.dials}" id="e-dials-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.convos}" id="e-convos-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.pitched}" id="e-pitched-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.booked}" id="e-booked-${r.id}"></td>
+          <td style="display:flex;gap:6px;padding:6px 10px">
+            <button class="btn-save" onclick="saveRow('setter','${r.id}','setter')">Save</button>
+            <button class="btn-danger" onclick="deleteRow('setter','${r.id}','${r.name}',this)">Delete</button>
+          </td></tr>`;
+      });
+    } else {
+      html+=`<tr><th>Date</th><th>Rep</th><th>Sched</th><th>Live</th><th>Offers</th><th>Closed</th><th>Revenue</th><th>Cash</th><th>Actions</th></tr>`;
+      rows.forEach(r=>{
+        html+=`<tr id="row-${r.id}">
+          <td><input class="edit-input wide" value="${r.date}" id="e-date-${r.id}"></td>
+          <td>${r.name}</td>
+          <td><input class="edit-input" type="number" value="${r.sched}" id="e-sched-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.live}" id="e-live-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.offers}" id="e-offers-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.closed}" id="e-closed-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.rev}" id="e-rev-${r.id}"></td>
+          <td><input class="edit-input" type="number" value="${r.cash}" id="e-cash-${r.id}"></td>
+          <td style="display:flex;gap:6px;padding:6px 10px">
+            <button class="btn-save" onclick="saveRow('closer','${r.id}','closer')">Save</button>
+            <button class="btn-danger" onclick="deleteRow('closer','${r.id}','${r.name}',this)">Delete</button>
+          </td></tr>`;
+      });
+    }
+    html+=`</table></div>`;
+    wrap.innerHTML=html;
+  }catch(e){wrap.innerHTML=`<div class="empty">Error: ${e.message}</div>`}
+}
+
+async function saveRow(table,id,tab){
+  let body={date:document.getElementById(`e-date-${id}`).value};
+  if(tab==='dm'){
+    body.dms=parseInt(document.getElementById(`e-dms-${id}`).value)||0;
+    body.convos=parseInt(document.getElementById(`e-convos-${id}`).value)||0;
+    body.pitched=parseInt(document.getElementById(`e-pitched-${id}`).value)||0;
+    body.booked=parseInt(document.getElementById(`e-booked-${id}`).value)||0;
+  } else if(tab==='setter'){
+    body.dials=parseInt(document.getElementById(`e-dials-${id}`).value)||0;
+    body.convos=parseInt(document.getElementById(`e-convos-${id}`).value)||0;
+    body.pitched=parseInt(document.getElementById(`e-pitched-${id}`).value)||0;
+    body.booked=parseInt(document.getElementById(`e-booked-${id}`).value)||0;
+  } else {
+    body.sched=parseInt(document.getElementById(`e-sched-${id}`).value)||0;
+    body.live=parseInt(document.getElementById(`e-live-${id}`).value)||0;
+    body.offers=parseInt(document.getElementById(`e-offers-${id}`).value)||0;
+    body.closed=parseInt(document.getElementById(`e-closed-${id}`).value)||0;
+    body.rev=parseInt(document.getElementById(`e-rev-${id}`).value)||0;
+    body.cash=parseInt(document.getElementById(`e-cash-${id}`).value)||0;
+  }
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`,{method:'PATCH',headers:{...H,'Prefer':'return=minimal'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(await r.text());
+    const t=document.getElementById('toast-admin');
+    t.textContent='Row updated successfully.';t.className='toast success';
+    setTimeout(()=>{t.className='toast'},3000);
+  }catch(e){
+    const t=document.getElementById('toast-admin');
+    t.textContent='Update failed: '+e.message;t.className='toast error';
+    setTimeout(()=>{t.className='toast'},3000);
+  }
+}
+
+async function deleteRow(table,id,name,btn){
+  if(!confirm(`Delete this submission for ${name}? This cannot be undone.`)) return;
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`,{method:'DELETE',headers:H});
+    if(!r.ok) throw new Error(await r.text());
+    const row=document.getElementById(`row-${id}`);
+    if(row) row.remove();
+    const t=document.getElementById('toast-admin');
+    t.textContent='Submission deleted.';t.className='toast success';
+    setTimeout(()=>{t.className='toast'},3000);
+  }catch(e){
+    const t=document.getElementById('toast-admin');
+    t.textContent='Delete failed: '+e.message;t.className='toast error';
+    setTimeout(()=>{t.className='toast'},3000);
+  }
+}
+</script>
+</body>
+</html>
