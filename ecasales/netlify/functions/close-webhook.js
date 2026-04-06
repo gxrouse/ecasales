@@ -7,28 +7,26 @@ const HEADERS = {
   'Authorization': 'Bearer ' + SUPA_KEY
 };
 
-// Activity type ID to handler key
 const ACTIVITY_TYPE_MAP = {
-  'actitype_0gmrSF3cyjFoUzLw1mRyae': 'completed',       // Strategy Call Completed
-  'actitype_4uVyF0QGlLaOTOzn2F8P2M': 'not_completed',   // Strategy Call Not Completed
-  'actitype_2z8SRuCyy309OLnSUz7oSi': 'deal_won'         // Deal Won
+  'actitype_0gmrSF3cyjFoUzLw1mRyae': 'completed',
+  'actitype_4uVyF0QGlLaOTOzn2F8P2M': 'not_completed',
+  'actitype_2z8SRuCyy309OLnSUz7oSi': 'deal_won'
 };
 
-// Field IDs per activity type
 const FIELDS = {
   completed: {
-    date:      'custom.cf_mxQkF7rW5qpUmYfArG3LmKuUQNm3ZHnNZcSZvIhYe89',
-    rep:       'custom.cf_oj8HhXOPL8f9aiAoY3oSLFw6rSCtFcuWWc0jc8oyXkU'
+    date: 'custom.cf_mxQkF7rW5qpUmYfArG3LmKuUQNm3ZHnNZcSZvIhYe89',
+    rep:  'custom.cf_oj8HhXOPL8f9aiAoY3oSLFw6rSCtFcuWWc0jc8oyXkU'
   },
   not_completed: {
-    date:      'custom.cf_XVxzZf70sQ9YY8mvHgV1suIBpKKN5hjYGxjF98V5f4f',
-    rep:       'custom.cf_4D8Qdkwg3igcj1CLiI6aZMFmKgfGkR31NeihZDVFTX4'
+    date: 'custom.cf_XVxzZf70sQ9YY8mvHgV1suIBpKKN5hjYGxjF98V5f4f',
+    rep:  'custom.cf_4D8Qdkwg3igcj1CLiI6aZMFmKgfGkR31NeihZDVFTX4'
   },
   deal_won: {
-    date:      'custom.cf_9pEoBLwX23aeeJBCs7XMWLH6K1UhSykPOp0nZwthHMm',
-    rep:       'custom.cf_XrWciUXWFWqVBgCv637WhuQaN4nNGyBj8bHpSf9Uv6J',
-    rev:       'custom.cf_USVRWjGuIuwao4VkV5R63Ov5Mr7apoANNBHhTEz6Enw',
-    cash:      'custom.cf_A0RETOl11g1ZhVsC2w57chW0jAyFxoBUd6pUcCJabnf'
+    date: 'custom.cf_9pEoBLwX23aeeJBCs7XMWLH6K1UhSykPOp0nZwthHMm',
+    rep:  'custom.cf_XrWciUXWFWqVBgCv637WhuQaN4nNGyBj8bHpSf9Uv6J',
+    rev:  'custom.cf_USVRWjGuIuwao4VkV5R63Ov5Mr7apoANNBHhTEz6Enw',
+    cash: 'custom.cf_A0RETOl11g1ZhVsC2w57chW0jAyFxoBUd6pUcCJabnf'
   }
 };
 
@@ -65,8 +63,7 @@ async function upsertCloser(name, date, increment) {
     if (!patchRes.ok) throw new Error('Patch failed: ' + await patchRes.text());
   } else {
     const newRow = {
-      name,
-      date,
+      name, date,
       sched:  increment.sched  || 0,
       live:   increment.live   || 0,
       offers: increment.offers || 0,
@@ -103,20 +100,26 @@ exports.handler = async function(event) {
     return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'no event key' }) };
   }
 
-  // Only process created actions
-  if (ev.action !== 'created') {
-    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'not a created action' }) };
-  }
-
+  const action = ev.action;
   const data = ev.data;
+  const previousData = ev.previous_data || {};
+
+  console.log('action:', action, 'status:', data && data.status, 'prev status:', previousData.status);
+
   if (!data) {
     return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'no data' }) };
   }
 
-  // Ignore drafts — only process published activities
-  if (data.status === 'draft') {
-    console.log('Ignoring draft activity');
-    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'draft' }) };
+  // Process if:
+  // - created and not draft (activity saved directly without draft step)
+  // - updated and status changed from draft to published (rep hit publish)
+  const isDirectCreate = action === 'created' && data.status !== 'draft';
+  const isPublishFromDraft = action === 'updated' && previousData.status === 'draft' && data.status !== 'draft';
+
+  console.log('isDirectCreate:', isDirectCreate, 'isPublishFromDraft:', isPublishFromDraft);
+
+  if (!isDirectCreate && !isPublishFromDraft) {
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'not a publish event', action, status: data.status }) };
   }
 
   const typeId = data.custom_activity_type_id;
@@ -145,10 +148,8 @@ exports.handler = async function(event) {
   try {
     if (handlerKey === 'completed') {
       await upsertCloser(repName, date, { sched: 1, live: 1 });
-
     } else if (handlerKey === 'not_completed') {
       await upsertCloser(repName, date, { sched: 1 });
-
     } else if (handlerKey === 'deal_won') {
       const rev  = parseFloat(data[fieldMap.rev]  || 0);
       const cash = parseFloat(data[fieldMap.cash] || 0);
