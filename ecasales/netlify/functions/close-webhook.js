@@ -4,33 +4,43 @@ const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const HEADERS = {
   'Content-Type': 'application/json',
   'apikey': SUPA_KEY,
-  'Authorization': 'Bearer ' + SUPA_KEY,
-  'Prefer': 'resolution=merge-duplicates'
+  'Authorization': 'Bearer ' + SUPA_KEY
 };
 
-const ACTIVITY_MAP = {
-  'Strategy Call Completed': 'completed',
-  'Strategy Call Not Completed': 'not_completed',
-  'Deal Won': 'deal_won'
+// Activity type ID to handler key
+const ACTIVITY_TYPE_MAP = {
+  'actitype_0gmrSF3cyjFoUzLw1mRyae': 'completed',       // Strategy Call Completed
+  'actitype_4uVyF0QGlLaOTOzn2F8P2M': 'not_completed',   // Strategy Call Not Completed
+  'actitype_2z8SRuCyy309OLnSUz7oSi': 'deal_won'         // Deal Won
 };
 
-function getField(fields, label) {
-  if (!fields || !Array.isArray(fields)) return null;
-  const field = fields.find(f =>
-    f.label && f.label.toLowerCase() === label.toLowerCase()
-  );
-  return field ? field.value : null;
-}
+// Field IDs per activity type
+const FIELDS = {
+  completed: {
+    date:      'custom.cf_mxQkF7rW5qpUmYfArG3LmKuUQNm3ZHnNZcSZvIhYe89',
+    rep:       'custom.cf_oj8HhXOPL8f9aiAoY3oSLFw6rSCtFcuWWc0jc8oyXkU'
+  },
+  not_completed: {
+    date:      'custom.cf_XVxzZf70sQ9YY8mvHgV1suIBpKKN5hjYGxjF98V5f4f',
+    rep:       'custom.cf_4D8Qdkwg3igcj1CLiI6aZMFmKgfGkR31NeihZDVFTX4'
+  },
+  deal_won: {
+    date:      'custom.cf_9pEoBLwX23aeeJBCs7XMWLH6K1UhSykPOp0nZwthHMm',
+    rep:       'custom.cf_XrWciUXWFWqVBgCv637WhuQaN4nNGyBj8bHpSf9Uv6J',
+    rev:       'custom.cf_USVRWjGuIuwao4VkV5R63Ov5Mr7apoANNBHhTEz6Enw',
+    cash:      'custom.cf_A0RETOl11g1ZhVsC2w57chW0jAyFxoBUd6pUcCJabnf'
+  }
+};
 
 function parseDate(raw) {
   if (!raw) return null;
-  return raw.substring(0, 10);
+  return String(raw).substring(0, 10);
 }
 
 async function upsertCloser(name, date, increment) {
   const getRes = await fetch(
     `${SUPA_URL}/rest/v1/closer?name=eq.${encodeURIComponent(name)}&date=eq.${date}&select=*`,
-    { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    { headers: HEADERS }
   );
   const existing = await getRes.json();
 
@@ -52,10 +62,7 @@ async function upsertCloser(name, date, increment) {
         body: JSON.stringify(updated)
       }
     );
-    if (!patchRes.ok) {
-      const err = await patchRes.text();
-      throw new Error('Patch failed: ' + err);
-    }
+    if (!patchRes.ok) throw new Error('Patch failed: ' + await patchRes.text());
   } else {
     const newRow = {
       name,
@@ -75,10 +82,7 @@ async function upsertCloser(name, date, increment) {
         body: JSON.stringify(newRow)
       }
     );
-    if (!insertRes.ok) {
-      const err = await insertRes.text();
-      throw new Error('Insert failed: ' + err);
-    }
+    if (!insertRes.ok) throw new Error('Insert failed: ' + await insertRes.text());
   }
 }
 
@@ -94,60 +98,46 @@ exports.handler = async function(event) {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
 
-  // DEBUG: log the full payload so we can see exactly what Close sends
-  console.log('FULL PAYLOAD:', JSON.stringify(payload, null, 2));
-
-  const data = payload.data || payload;
-
-  console.log('DATA KEYS:', Object.keys(data).join(', '));
-  console.log('activity_type:', data.activity_type);
-  console.log('activity_type_name:', data.activity_type_name);
-  console.log('type:', data.type);
-  console.log('_type:', data._type);
-  console.log('fields:', JSON.stringify(data.fields || data.custom || []));
-
-  const activityType = data.activity_type || (data._type === 'Activity' ? data.type : null);
-
-  let handlerKey = null;
-  for (const [typeName, key] of Object.entries(ACTIVITY_MAP)) {
-    if (
-      activityType === typeName ||
-      (data.type && data.type === typeName) ||
-      (data.activity_type_name && data.activity_type_name === typeName)
-    ) {
-      handlerKey = key;
-      break;
-    }
+  const ev = payload.event;
+  if (!ev) {
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'no event key' }) };
   }
 
-  console.log('RESOLVED handlerKey:', handlerKey);
+  // Only process created actions
+  if (ev.action !== 'created') {
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'not a created action' }) };
+  }
+
+  const data = ev.data;
+  if (!data) {
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'no data' }) };
+  }
+
+  // Ignore drafts — only process published activities
+  if (data.status === 'draft') {
+    console.log('Ignoring draft activity');
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'draft' }) };
+  }
+
+  const typeId = data.custom_activity_type_id;
+  const handlerKey = ACTIVITY_TYPE_MAP[typeId];
+
+  console.log('type_id:', typeId, 'handlerKey:', handlerKey);
 
   if (!handlerKey) {
-    return { statusCode: 200, body: JSON.stringify({ ignored: true, type: activityType }) };
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'unknown type', typeId }) };
   }
 
-  const fields = data.fields || data.custom || [];
-  let repName = getField(fields, 'Closer Lead Owner');
+  const fieldMap = FIELDS[handlerKey];
+  const repName = data[fieldMap.rep] || null;
+  const rawDate = data[fieldMap.date] || data.date_created;
+  const date = parseDate(rawDate);
 
-  if (!repName) {
-    repName = data.created_by_name || data.user_name || null;
-  }
-
-  console.log('REP NAME:', repName);
+  console.log('rep:', repName, 'date:', date);
 
   if (!repName) {
     return { statusCode: 422, body: 'Could not identify rep name' };
   }
-
-  let date =
-    getField(fields, 'Date Of Call') ||
-    getField(fields, 'Date Won') ||
-    data.date_created ||
-    new Date().toISOString();
-  date = parseDate(date);
-
-  console.log('DATE:', date);
-
   if (!date) {
     return { statusCode: 422, body: 'Could not parse date' };
   }
@@ -155,18 +145,17 @@ exports.handler = async function(event) {
   try {
     if (handlerKey === 'completed') {
       await upsertCloser(repName, date, { sched: 1, live: 1 });
+
     } else if (handlerKey === 'not_completed') {
       await upsertCloser(repName, date, { sched: 1 });
+
     } else if (handlerKey === 'deal_won') {
-      const contractValue = parseFloat(getField(fields, 'Contract Value') || 0);
-      const cashCollected = parseFloat(getField(fields, 'Cash Collected') || 0);
-      await upsertCloser(repName, date, {
-        closed: 1,
-        rev: contractValue,
-        cash: cashCollected
-      });
+      const rev  = parseFloat(data[fieldMap.rev]  || 0);
+      const cash = parseFloat(data[fieldMap.cash] || 0);
+      await upsertCloser(repName, date, { closed: 1, rev, cash });
     }
 
+    console.log('SUCCESS:', handlerKey, repName, date);
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true, handler: handlerKey, rep: repName, date })
