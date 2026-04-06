@@ -7,12 +7,23 @@ const HEADERS = {
   'Authorization': 'Bearer ' + SUPA_KEY
 };
 
+// Close user ID to display name mapping
+const USER_MAP = {
+  'user_rI8oNyaC2bRuNGR1PDegeIauwHhoDmFRHXyVTsuGQHh': 'Bryce Miller',
+  'user_wxFgtp7NfC4FwU7gQO3Qiy4QDHhIGYkLXgJzKe1CYxE': 'Broderick Sargent',
+  'user_mzZKgH84J0G8T1DxPthEKi5gN3YPXrUvshkdkhayx8D': 'Miles Perez',
+  'user_0TrpyK1NlTBT4UWiKT5i1KSfhcRqPuHXMpjh8QJ7uWH': 'Gary Rouse',
+  'user_wUucXVFjWJywcYfkvhU0ZBzLChPROLOIo1OujkO3AkE': 'Jake Pastick'
+};
+
+// Activity type ID to handler key
 const ACTIVITY_TYPE_MAP = {
   'actitype_0gmrSF3cyjFoUzLw1mRyae': 'completed',
   'actitype_4uVyF0QGlLaOTOzn2F8P2M': 'not_completed',
   'actitype_2z8SRuCyy309OLnSUz7oSi': 'deal_won'
 };
 
+// Field IDs per activity type
 const FIELDS = {
   completed: {
     date: 'custom.cf_mxQkF7rW5qpUmYfArG3LmKuUQNm3ZHnNZcSZvIhYe89',
@@ -29,6 +40,14 @@ const FIELDS = {
     cash: 'custom.cf_A0RETOl11g1ZhVsC2w57chW0jAyFxoBUd6pUcCJabnf'
   }
 };
+
+function resolveRep(rawValue) {
+  if (!rawValue) return null;
+  // If it's already a name (contains a space), return as-is
+  if (String(rawValue).includes(' ')) return rawValue;
+  // Otherwise treat as user ID and look up
+  return USER_MAP[rawValue] || null;
+}
 
 function parseDate(raw) {
   if (!raw) return null;
@@ -104,41 +123,37 @@ exports.handler = async function(event) {
   const data = ev.data;
   const previousData = ev.previous_data || {};
 
-  console.log('action:', action, 'status:', data && data.status, 'prev status:', previousData.status);
-
   if (!data) {
     return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'no data' }) };
   }
 
-  // Process if:
-  // - created and not draft (activity saved directly without draft step)
-  // - updated and status changed from draft to published (rep hit publish)
+  // Only process created (published) or updated (draft -> published)
   const isDirectCreate = action === 'created' && data.status !== 'draft';
   const isPublishFromDraft = action === 'updated' && previousData.status === 'draft' && data.status !== 'draft';
 
-  console.log('isDirectCreate:', isDirectCreate, 'isPublishFromDraft:', isPublishFromDraft);
+  console.log('action:', action, 'status:', data.status, 'prev:', previousData.status, 'isDirectCreate:', isDirectCreate, 'isPublishFromDraft:', isPublishFromDraft);
 
   if (!isDirectCreate && !isPublishFromDraft) {
-    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'not a publish event', action, status: data.status }) };
+    return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'not a publish event' }) };
   }
 
   const typeId = data.custom_activity_type_id;
   const handlerKey = ACTIVITY_TYPE_MAP[typeId];
-
-  console.log('type_id:', typeId, 'handlerKey:', handlerKey);
 
   if (!handlerKey) {
     return { statusCode: 200, body: JSON.stringify({ ignored: true, reason: 'unknown type', typeId }) };
   }
 
   const fieldMap = FIELDS[handlerKey];
-  const repName = data[fieldMap.rep] || null;
+  const rawRep = data[fieldMap.rep] || null;
+  const repName = resolveRep(rawRep);
   const rawDate = data[fieldMap.date] || data.date_created;
   const date = parseDate(rawDate);
 
-  console.log('rep:', repName, 'date:', date);
+  console.log('rawRep:', rawRep, 'repName:', repName, 'date:', date);
 
   if (!repName) {
+    console.error('Could not resolve rep name from:', rawRep);
     return { statusCode: 422, body: 'Could not identify rep name' };
   }
   if (!date) {
