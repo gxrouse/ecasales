@@ -8,14 +8,12 @@ const HEADERS = {
   'Prefer': 'resolution=merge-duplicates'
 };
 
-// Maps Close activity type names to handler keys
 const ACTIVITY_MAP = {
   'Strategy Call Completed': 'completed',
   'Strategy Call Not Completed': 'not_completed',
   'Deal Won': 'deal_won'
 };
 
-// Extracts field value from Close custom activity fields array by label
 function getField(fields, label) {
   if (!fields || !Array.isArray(fields)) return null;
   const field = fields.find(f =>
@@ -24,14 +22,12 @@ function getField(fields, label) {
   return field ? field.value : null;
 }
 
-// Parses Close date format (YYYY-MM-DD or ISO string) to YYYY-MM-DD
 function parseDate(raw) {
   if (!raw) return null;
   return raw.substring(0, 10);
 }
 
 async function upsertCloser(name, date, increment) {
-  // First try to get existing row
   const getRes = await fetch(
     `${SUPA_URL}/rest/v1/closer?name=eq.${encodeURIComponent(name)}&date=eq.${date}&select=*`,
     { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
@@ -39,15 +35,14 @@ async function upsertCloser(name, date, increment) {
   const existing = await getRes.json();
 
   if (existing && existing.length > 0) {
-    // Row exists — increment the relevant fields
     const row = existing[0];
     const updated = {
-      sched: row.sched + (increment.sched || 0),
-      live:  row.live  + (increment.live  || 0),
+      sched:  row.sched  + (increment.sched  || 0),
+      live:   row.live   + (increment.live   || 0),
       offers: row.offers + (increment.offers || 0),
       closed: row.closed + (increment.closed || 0),
-      rev:   row.rev   + (increment.rev   || 0),
-      cash:  row.cash  + (increment.cash  || 0)
+      rev:    row.rev    + (increment.rev    || 0),
+      cash:   row.cash   + (increment.cash   || 0)
     };
     const patchRes = await fetch(
       `${SUPA_URL}/rest/v1/closer?id=eq.${row.id}`,
@@ -62,7 +57,6 @@ async function upsertCloser(name, date, increment) {
       throw new Error('Patch failed: ' + err);
     }
   } else {
-    // No row yet — insert fresh
     const newRow = {
       name,
       date,
@@ -89,7 +83,6 @@ async function upsertCloser(name, date, increment) {
 }
 
 exports.handler = async function(event) {
-  // Only accept POST requests
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -101,12 +94,20 @@ exports.handler = async function(event) {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
 
-  // Close sends webhooks with event.data containing the activity
+  // DEBUG: log the full payload so we can see exactly what Close sends
+  console.log('FULL PAYLOAD:', JSON.stringify(payload, null, 2));
+
   const data = payload.data || payload;
+
+  console.log('DATA KEYS:', Object.keys(data).join(', '));
+  console.log('activity_type:', data.activity_type);
+  console.log('activity_type_name:', data.activity_type_name);
+  console.log('type:', data.type);
+  console.log('_type:', data._type);
+  console.log('fields:', JSON.stringify(data.fields || data.custom || []));
+
   const activityType = data.activity_type || (data._type === 'Activity' ? data.type : null);
 
-  // Resolve the activity name — Close may send type name directly or as a string
-  // We match against known activity type names in ACTIVITY_MAP
   let handlerKey = null;
   for (const [typeName, key] of Object.entries(ACTIVITY_MAP)) {
     if (
@@ -119,25 +120,25 @@ exports.handler = async function(event) {
     }
   }
 
+  console.log('RESOLVED handlerKey:', handlerKey);
+
   if (!handlerKey) {
-    // Not an activity type we handle — acknowledge and ignore
     return { statusCode: 200, body: JSON.stringify({ ignored: true, type: activityType }) };
   }
 
-  // Extract rep name from Closer Lead Owner field
   const fields = data.fields || data.custom || [];
   let repName = getField(fields, 'Closer Lead Owner');
 
-  // Fallback: try created_by_name if field not found
   if (!repName) {
     repName = data.created_by_name || data.user_name || null;
   }
+
+  console.log('REP NAME:', repName);
 
   if (!repName) {
     return { statusCode: 422, body: 'Could not identify rep name' };
   }
 
-  // Extract date from Date Of Call or Date Won field, fallback to today
   let date =
     getField(fields, 'Date Of Call') ||
     getField(fields, 'Date Won') ||
@@ -145,22 +146,18 @@ exports.handler = async function(event) {
     new Date().toISOString();
   date = parseDate(date);
 
+  console.log('DATE:', date);
+
   if (!date) {
     return { statusCode: 422, body: 'Could not parse date' };
   }
 
   try {
     if (handlerKey === 'completed') {
-      // Strategy Call Completed: counts as scheduled + live
       await upsertCloser(repName, date, { sched: 1, live: 1 });
-
     } else if (handlerKey === 'not_completed') {
-      // Strategy Call Not Completed: counts as scheduled only
       await upsertCloser(repName, date, { sched: 1 });
-
     } else if (handlerKey === 'deal_won') {
-      // Deal Won: closed deal + revenue + cash
-      // Contract Value and Cash Collected are stored as numbers (dollars, not cents)
       const contractValue = parseFloat(getField(fields, 'Contract Value') || 0);
       const cashCollected = parseFloat(getField(fields, 'Cash Collected') || 0);
       await upsertCloser(repName, date, {
@@ -176,7 +173,7 @@ exports.handler = async function(event) {
     };
 
   } catch (e) {
-    console.error('Webhook handler error:', e.message);
+    console.error('ERROR:', e.message);
     return { statusCode: 500, body: 'Internal error: ' + e.message };
   }
 };
